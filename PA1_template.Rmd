@@ -5,21 +5,109 @@ output:
     keep_md: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ## Loading and preprocessing the data
+Let us first load the data into a data frame.
 
-
+```{r,echo = TRUE}
+df <- read.csv(file = "activity.csv")
+```
 
 ## What is mean total number of steps taken per day?
+Now let us obtain step totals on a daily basis in a data frame. To do that, first load in the sqldf package.
 
+```{r,echo = TRUE}
+library(sqldf)
+daytotals <- sqldf("SELECT date,SUM(steps) as total_steps from df WHERE steps IS NOT(NULL) GROUP BY date")
+print(daytotals)
+```
 
+For a histogram of daily total steps, we have the following R code.
+
+```{r,echo = TRUE}
+hist(daytotals$total_steps,main = "Histogram of Total Steps",xlab = "Daily Total Steps")
+```
+
+From the code chunk below, we can obtain that mean and median of the total number of daily steps taken.
+
+```{r,echo = TRUE}
+print(mean(daytotals$total_steps))
+print(median(daytotals$total_steps))
+```
 
 ## What is the average daily activity pattern?
+Now for the average daily activity pattern, we have that the following pattern.
 
+```{r,echo = TRUE}
+intervalmeans <- sqldf("SELECT interval,AVG(steps) as mean_steps from df WHERE steps IS NOT(NULL) GROUP BY interval")
+plot(y = intervalmeans$mean_steps,x = intervalmeans$interval,type = "l",xlab = "interval",ylab= "mean steps",main = "Mean ")
+```
 
+From the code chunk below, we get that the 167th 5-minute interval i.e interval marked as 835 has the highest average daily mean steps.
+
+```{r,echo = TRUE}
+max_mean_steps <- max(intervalmeans$mean_steps)
+subset(x = intervalmeans,intervalmeans$mean_steps == max_mean_steps,select = 1)
+```
 
 ## Imputing missing values
+First subset the data that has missing values and then count the number of missing values in that datframe.
 
+```{r,echo = TRUE}
+missingdf <- subset(df,is.na(df$steps))
+length(missingdf$steps) # Hence 2304 missing values
+```
 
+Consider replacing missing values with the mean of values for that time interval over all days.
+
+```{r,echo = TRUE}
+imputed_df <- df
+length_df <- nrow(imputed_df) # Length of the data frame
+for(i in 1:length_df){
+  if(is.na(imputed_df[i,1])){
+    imputed_df[i,1] <- subset(intervalmeans,intervalmeans$interval == imputed_df[i,3])[1,2]
+  }
+}
+```
+
+Following is the histogram of the imputed data frame.
+
+```{r,echo = TRUE}
+imputedtotals <- sqldf("SELECT date,SUM(steps) as total_steps from imputed_df GROUP BY date") # This data frame has daily step totals
+hist(imputedtotals$total_steps,main = "Histogram of Imputed Total Steps",xlab = "Daily Imputed Total Steps")
+print(mean(imputedtotals$total_steps))
+print(median(imputedtotals$total_steps))
+```
+
+It can be seen from above that mean of total daily steps hasn't changed even with imputation which can be easily proven.
+However, the median has slightly moved higher as a result of imputation.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+Use the imputed data frame to assign a factor variable for weekdays.
+
+```{r,echo = TRUE}
+library(timeDate) # This package has useful functions for time-date conversions
+imputed_df$category <- isWeekday(as.Date(imputed_df$date))
+for(i in 1:length_df){
+  if(imputed_df[i,4]){
+    imputed_df[i,4] <- "weekday"
+  }
+  else{
+    imputed_df[i,4] <- "weekend"
+  }
+}
+```
+
+The following code creates the required time series panel plot. 
+
+```{r,echo = TRUE}
+library(ggplot2)
+imputed_intervalmeans <- sqldf("SELECT interval,category, AVG(steps) as mean_steps from imputed_df WHERE steps IS NOT(NULL) GROUP BY category,interval")
+gplt <- ggplot(imputed_intervalmeans, aes(x = interval,y = mean_steps))+geom_line()+facet_grid(category ~.)
+print(gplt)
+```
+
+Hence it can be seen that there are differences in activity patterns between weekdays and weekends.
